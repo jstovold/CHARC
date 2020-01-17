@@ -1,5 +1,5 @@
 %%
-function [all_diffs, all_metrics_a, all_metrics_b, ks_outs, atest_outs] = run_full_tests(pop_size,res_size)
+function [all_diffs, all_metrics_a, all_metrics_b, ks_outs, atest_outs, population] = run_full_tests(pop_size,res_size)
     
     [population, config] = create_population(pop_size, res_size);
     close all
