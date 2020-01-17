@@ -86,11 +86,11 @@ for test = 1:config.num_tests
     
     %Assess population
     if config.parallel % use parallel toolbox - faster
-        ppm = ParforProgMon('Initial population: ', config.pop_size);
+        %ppm = ParforProgMon('Initial population: ', config.pop_size);
         parfor pop_indx = 1:config.pop_size
             warning('off','all')
             population(pop_indx) = config.testFcn(population(pop_indx),config);
-            ppm.increment();
+         %   ppm.increment();
         end
     else
         for pop_indx = 1:config.pop_size

@@ -17,8 +17,10 @@ function neuron_num = findSynchronisedNeurons(individual, config)
     % neurons, but we just pick the first which is returned.
     [row, ~] = find(corrs == max_correlation);
     
-    neuron_num = row(1);
-
+    neuron_num = min(row);
+    if neuron_num > config.num_nodes
+        neuron_num = 0;
+    end
 
 
 
