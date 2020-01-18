@@ -1,17 +1,17 @@
 %%
-function [individual, config, t, node, idx] = mctsPruning(individual, metrics_fcn, prune_target_size, comp_budget, config)
+function [individual, config, t, node, idx, total_wins] = mctsPruning(individual, metrics_fcn, prune_target_size, comp_budget, config)
 
 
     %% setup
     % node format: 1:current individual, 2:config, 3:wins, 4:visits, 5:{remainingChildren array}
     t = tree({individual, config, 0, 0, {1:individual.nodes}}); 
-    
+    baseline = metrics_fcn(individual, config);
     i = 0;
     while i < comp_budget
         
         [node, idx]     = selection(t, 1, 0.1);
         [t, new_idx]    = expansion(t, idx);
-        [t, win]        = rollout(t, new_idx, prune_target_size, metrics_fcn, metrics_fcn(individual, config));
+        [t, win]        = rollout(t, new_idx, prune_target_size, metrics_fcn, baseline);
         [t]             = backprop(t, new_idx, win);
 
         i = i + 1;
@@ -25,7 +25,8 @@ function [individual, config, t, node, idx] = mctsPruning(individual, metrics_fc
     node        = node{1};
     individual  = node{1};
     config      = node{2};
-    
+    root        = t.Node(1);
+    total_wins  = root{1}{3};
     %% selection
     % UCB1 = w_i / n_i + c * \sqrt{log(N_i) / n_i}
     
@@ -154,14 +155,14 @@ function [individual, config, t, node, idx] = mctsPruning(individual, metrics_fc
         end
         
         metrics = metricsFcn(ind, conf);
-        if wins(metrics, baseline)
+        if won(metrics, baseline)
             win = 1;
         else
             win = 0; 
         end
     end
 
-    function [win] = wins(metrics, baseline)
+    function [win] = won(metrics, baseline)
         win = 0;
         if metrics(1) >= baseline(1)
             if metrics(2) <= baseline(2)
