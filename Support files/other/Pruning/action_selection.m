@@ -27,12 +27,12 @@ function [selected_node, selected_idx] = action_selection(t, node_idx)
         if best_idx == 0
             % no children have been visited at this stage
             % pick at random?
-            disp('child');
-            disp(length(child_idxs))
+%             disp('child');
+%             disp(length(child_idxs))
             [selected_node, selected_idx] = action_selection(t, randsample(child_idxs, 1));
         else
-            disp(best_idx)
-            disp(best_w)
+%             disp(best_idx)
+%             disp(best_w)
             [selected_node, selected_idx] = action_selection(t, best_idx); 
         end
 
