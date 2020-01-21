@@ -17,7 +17,7 @@ function [individual, config, t, node, idx, total_wins] = mctsPruning(individual
     while i < comp_budget
         a = tic;
         [idx]           = selection(t, rootID, 0.1);
-        [t, new_idx]    = expansion(t, idx, config);
+        [t, new_idx]    = expansion(t, idx, individual);
         [t, win]        = rollout(t, new_idx, prune_target_size, metrics_fcn, baseline, config);
         [t]             = backprop(t, new_idx, win);
 
@@ -31,12 +31,12 @@ function [individual, config, t, node, idx, total_wins] = mctsPruning(individual
     % standard MCTS approach).
     [node, idx]                     = action_selection(t, 1);
     node                            = node.value;
-    individual                      = node.individual;
+    individual                      = t.getIndividual(idx);
     config.knocked_out_neurons      = node.knockouts;
     root                            = t.getvalue(1);
     total_wins                      = root.wins;
  
-    fprintf('Total time for %i iterations: %fs \n\r', i, total_time);
+    fprintf('Total time for %i iterations: %fmins \n\r', i, total_time/60);
 
 
 end
