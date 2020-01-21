@@ -9,11 +9,12 @@ function [individual, config, t, node, idx, total_wins] = mctsPruning(individual
     rootVal = struct('individual', individual, 'knockouts', [], 'wins', 0, 'visits', 0, 'childrenRemaining', 1:individual.nodes);
     t = jhs_tree(comp_budget);
     rootID = t.addroot(rootVal);
-    
 %     t = tree({individual, config, 0, 0, {1:individual.nodes}}); 
     baseline = metrics_fcn(individual, config);
     i = 0;
     total_start = tic;
+    reverseLen = 0;
+    msg = '';
     while i < comp_budget
         a = tic;
         [idx]           = selection(t, rootID, 0.1);
@@ -22,7 +23,12 @@ function [individual, config, t, node, idx, total_wins] = mctsPruning(individual
         [t]             = backprop(t, new_idx, win);
 
         i = i + 1;
-        fprintf( "Iter: %i \t Time: %.3fs \n\r", i, toc(a))
+        
+        fprintf(strcat(repmat('\b', 1, reverseLen)));
+        reverseLen = fprintf("Iter: %i \t Time: %.3fs ", i, toc(a));
+        
+        
+        
     end
     total_time = toc(total_start);
     
@@ -36,7 +42,7 @@ function [individual, config, t, node, idx, total_wins] = mctsPruning(individual
     root                            = t.getvalue(1);
     total_wins                      = root.wins;
  
-    fprintf('Total time for %i iterations: %fmins \n\r', i, total_time/60);
+    fprintf('\r\nTotal time for %i iterations: %fmins \n\r', i, total_time/60);
 
 
 end
