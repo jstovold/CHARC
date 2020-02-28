@@ -11,9 +11,9 @@
 %  - add GPU support to step function
 %
 
-function oregonator(bitmatrix, config)
+function oregonator(bitmatrix, phimatrix, config)
     config = getDefaultParams(config);
-    reactor = createReactor(bitmatrix, config);
+    reactor = createReactor(bitmatrix, phimatrix, config);
     state = initReactor(reactor, config);
     updateDisplay(state, config);
     for t = 1:config.timesteps
@@ -42,13 +42,14 @@ function config = getDefaultParams(config)
     config.speed       = 0.0005;
     config.phi_active  = 0.054;    % normal, excitable
     config.phi_passive = 0.0975;   % passive, excitable
+    
     config.u_idx = 1;
     config.v_idx = 2;
     config.p_idx = 3;
     config.b_idx = 4;
 
     
-    config.vesicle_radius = 15;
+    config.vesicle_radius = 25;
 %     config.phi_active  = 0.0758;   % normal, wavelet / sub-ex
 %     config.phi_passive = 0.10015;  % passive, wavelet / sub-ex
 end
@@ -78,12 +79,12 @@ function img = updateDisplay(state, config)
 end
 
 %% create reactor from matrix
-function reactor = createReactor(bitMatrix, config)
+function reactor = createReactor(bitMatrix, phiMatrix, config)
     
     % takes the bit matrix and uses it to define the corresponding connected vesicle reactor
     % config needs size of vesicle
     
-    reactor = zeros(config.height, config.width, 1);
+    reactor = zeros(config.height, config.width, 2);
     
     margin_w = 5;
     margin_h = 5;
@@ -154,16 +155,29 @@ function reactor = createReactor(bitMatrix, config)
                 end
             end
             % remove overlapping boundary if present
+            phi = 0;
+            if bitMatrix(y, x) == 1
+                phi = phiMatrix(y, x);
+            end
             
             if left
                 reactor = makeConnection(reactor, v_centre_x, v_centre_y, v_centre_x - IVD, v_centre_y, config.vesicle_radius);
                 reactor = makeConnection(reactor, v_centre_x - IVD, v_centre_y, v_centre_x, v_centre_y, config.vesicle_radius);
+                
+                reactor = setExcitability(reactor, phi, v_centre_x, v_centre_y, v_centre_x - IVD, v_centre_y, config.vesicle_radius);
             end
 
             if top
                 reactor = makeConnection(reactor, v_centre_x, v_centre_y, v_centre_x, v_centre_y - IVD, config.vesicle_radius);
                 reactor = makeConnection(reactor, v_centre_x, v_centre_y - IVD, v_centre_x, v_centre_y, config.vesicle_radius);
+                
+                reactor = setExcitability(reactor, phi, v_centre_x, v_centre_y, v_centre_x, v_centre_y - IVD, config.vesicle_radius);
             end
+            
+            if ~left && ~top
+                reactor = setExcitability(reactor, phi, v_centre_x, v_centre_y, 0, 0, config.vesicle_radius);
+            end
+            
             
             v_centre_x = v_centre_x + IVD;
         end
@@ -177,6 +191,50 @@ function reactor = createReactor(bitMatrix, config)
 
 end
 
+%% set the phi for the given vesicle
+function reactor = setExcitability(reactor, phi, x0, y0, x1, y1, radius)
+
+    % find all pixels within the vesicle
+    % if there are connected vesicles, 
+    %   find the locus between (x0, y0) and (x1, y1)
+    %   this locus forms the boundary between the two vesicles
+    %   remove pixels from array that are closer to (x1, y1) than (x0, y0)
+    % set phi for all pixels in array
+    
+    hasConnection = false;
+    if x1 > 0 && y1 > 0
+        hasConnection = true;
+    end
+    
+    % draw box around the vesicle:
+    for y = (y0 - radius):(y0 + radius)
+        for x = (x0 - radius):(x0 + radius)
+            if euclDist(x, y, x0, y0) <= radius
+
+                if hasConnection
+                    if euclDist(x, y, x0, y0) < euclDist(x, y, x1, y1)
+                        reactor(y, x, 2) = phi;
+                    end
+                else
+                    reactor(y, x, 2) = phi;
+                end
+                
+            end
+        end
+    end
+    
+end
+
+function dist = euclDist(x_0,y_0,x_1,y_1) 
+
+    dx = x_0 - x_1;
+    dy = y_0 - y_1;
+
+    dist = sqrt(dx * dx + dy * dy);
+
+end
+
+
 %% form connection between vesicles
 function reactor = makeConnection(reactor, x0, y0, x1, y1, radius)
 
@@ -188,14 +246,7 @@ function reactor = makeConnection(reactor, x0, y0, x1, y1, radius)
     x = 0;
     y = radius;
 
-    function dist = euclDist(x_0,y_0,x_1,y_1) 
-        
-        dx = x_0 - x_1;
-        dy = y_0 - y_1;
-        
-        dist = sqrt(dx * dx + dy * dy);
-        
-    end
+  
     
     if euclDist(x0, y0 + radius, x1, y1) < radius
         reactor(y0 + radius, x0, 1) = 0.0;
@@ -261,9 +312,6 @@ function reactor = makeConnection(reactor, x0, y0, x1, y1, radius)
     end
 
 
-
-
-
 end
 
 %% draw a vesicle on the reactor
@@ -318,8 +366,8 @@ function state = initReactor(reactor, config)
     
 %     state(round(config.height / 2), round(config.width / 2), config.u_idx) = 1.0;
     state(75, 75, config.u_idx) = 1.0;
-    state(:,:,config.p_idx) = config.phi_active;
-    state(:,:,config.b_idx) = reactor;
+    state(:,:,config.p_idx) = reactor(:,:,2); %config.phi_active;
+    state(:,:,config.b_idx) = reactor(:,:,1);
     
     
 end
