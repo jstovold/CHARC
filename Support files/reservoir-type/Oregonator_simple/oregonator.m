@@ -4,30 +4,44 @@
 % 
 % This code implements a basic forward Euler integration on the photosensitive (Ru-catalysed)
 % variant of the Oregonator model: http://www.scholarpedia.org/article/Oregonator 
-% 
+%  
+% Example call: oregonator([1 0 1 1; 0 1 1 1], [0.05, 0, 0.05, 0.1; 0, 0.07, 0.01, 0.1], config)
+%
 % ======
 %
 % TODO:
 %  - add GPU support to step function
-%
+%  - add trace outputs
+%  - add time-varying inputs
 
-function oregonator(bitmatrix, phimatrix, config)
+
+
+function [output_data, output] = oregonator(bitmatrix, phimatrix, input_data, config)
     config = getDefaultParams(config);
     reactor = createReactor(bitmatrix, phimatrix, config);
     state = initReactor(reactor, config);
     updateDisplay(state, config);
-    for t = 1:config.timesteps
-        state = oreg_step(state, config);
-        if mod(t, config.stride) == 0
-            updateDisplay(state, config);
-        end
-    end
+    
+    maxPhiValue = max(phimatrix, [], 'all');
+    
+    output_data = runReservoir(state, input_data, maxPhiValue, config);
+    
+    processed_data = processOutputs(output_data, maxPhiValue, config);
+    
+    output = processed_data;
+%     for t = 1:config.timesteps
+%         
+%         state = oreg_step(state, config);
+%         if mod(t, config.stride) == 0
+%             updateDisplay(state, config);
+%         end
+%     end
 
 end
 
 %% default parameters
 function config = getDefaultParams(config)
-    config.height      = 200;
+    config.height      = 110;
     config.width       = 200;
     config.timesteps   = 100000;
     config.stride      = 100;
@@ -43,11 +57,20 @@ function config = getDefaultParams(config)
     config.phi_active  = 0.054;    % normal, excitable
     config.phi_passive = 0.0975;   % passive, excitable
     
+    config.waveThreshold      = 0.6;
+    config.numSamplesPerEpoch = 10;
+    
     config.u_idx = 1;
     config.v_idx = 2;
     config.p_idx = 3;
     config.b_idx = 4;
 
+    config.input_x = 75;   % eventually these will be converted to lists for multiple inputs
+    config.input_y = 75;   % but for now...
+    
+    config.trace_x = 180;
+    config.trace_y = 30;
+    
     
     config.vesicle_radius = 25;
 %     config.phi_active  = 0.0758;   % normal, wavelet / sub-ex
@@ -350,11 +373,6 @@ function reactor = drawVesicle(reactor, x0, y0, radius)
         reactor(y0 - x, x0 + y, 1) = 1.0;
         reactor(y0 - x, x0 - y, 1) = 1.0;
 
-    
-    
-    
-    
-    
     end
 
 end
@@ -365,13 +383,221 @@ function state = initReactor(reactor, config)
     state = zeros(config.height, config.width, 4);
     
 %     state(round(config.height / 2), round(config.width / 2), config.u_idx) = 1.0;
-    state(75, 75, config.u_idx) = 1.0;
+    state(config.input_y, config.input_x, config.u_idx) = 1.0;
     state(:,:,config.p_idx) = reactor(:,:,2); %config.phi_active;
     state(:,:,config.b_idx) = reactor(:,:,1);
     
     
 end
- 
+
+function state = stimulateInput(state, amount, config)
+    state(config.input_y, config.input_x, config.u_idx) = amount;
+end
+
+
+
+
+%% representation
+% we need a consistent sampling rate: for how long does each data point last?
+
+function strideLength = getStrideLength(phiValue)
+    
+    % minimum phi value: 0.03
+    % maximum phi value: 0.07 (no waves form)
+
+    % if maximum phi value <= 0.06  ->11000
+    % if maximum phi value <= 0.055 -> 9000
+    % if maximum phi value <= 0.05  -> 8000
+    % if maximum phi value <= 0.04  -> 7000
+    
+    strideLength = 0;
+    
+    if phiValue <= 0.04
+        strideLength = 7000;
+    elseif phiValue <= 0.05
+        strideLength = 8000;
+    elseif phiValue <= 0.055
+        strideLength = 9000;
+    else 
+        strideLength = 11000;
+    end
+    
+end
+
+function [output_data, state]  = runReservoir(state, input_data, maxPhiValue, config)
+    
+    trace_y = config.trace_y;
+    trace_x = config.trace_x;
+    u_idx   = config.u_idx;
+    
+    % convert magnitude of each data point to frequency of waves?
+    % let's assume all data is in the range 0..1
+    
+    % 1 -> maximum frequency (i.e. minimum time between waves)
+    % 0 -> minimum frequency (and so will be dictated by our sampling rate)
+    
+    % need the mapping from phi value to stride length (i.e. how close together can our waves be?
+    
+    strideLength = getStrideLength(maxPhiValue);
+    numSamples   = config.numSamplesPerEpoch;    % at least 3
+    timeLength   = strideLength * numSamples;
+    
+    output_data  = zeros(1, length(input_data) * timeLength); % currently assuming only 1 output
+%     output_data  = zeros(config.numOutputs, length(input_data) * timeLength); % currently assuming only 1 output
+    
+    t = 1;
+    for t_i = 1:length(input_data)
+        
+        mag = input_data(t_i);
+        
+        if mag > 0
+            [quantity, delay] = convertMagToQuant(mag, timeLength, strideLength);
+            if quantity > 0
+                for q = 1:quantity
+                    % stimulate the inputs
+                    % wait \strideLength\ timesteps
+                    % repeat q times
+
+                    state = stimulateInput(state, 1.0, config);
+
+                    for i = 1:delay
+                        state = oreg_step(state, config);
+                        
+                        if mod(t, config.stride) == 0
+                            updateDisplay(state, config);
+                        end
+
+                        output_data(t) = state(trace_y, trace_x, u_idx);
+                        
+                        t = t + 1;
+                    end
+
+                end
+            else
+                for i = 1:timeLength
+                    state = oreg_step(state, config);
+                    
+                    if mod(t, config.stride) == 0
+                        updateDisplay(state, config);
+                    end
+                    
+                    output_data(t) = state(trace_y, trace_x, u_idx);
+                    t = t + 1;
+                end
+            end
+        else
+            for i = 1:timeLength                
+                state = oreg_step(state, config);
+                if mod(t, config.stride) == 0
+                    updateDisplay(state, config);
+                end
+                
+                output_data(t) = state(trace_y, trace_x, u_idx);
+                t = t + 1;
+
+            end
+        end
+        
+    end
+    
+end
+
+function output_data = processOutputs(outputStream, maxPhiValue, config)
+
+    % mag = freq / sampleRate;
+    
+    % - if we receive a wave every /sampleRate/ timesteps, we have the maximum frequency (i.e. mag=1)
+    % - if we receive no waves in /sampleRate/ timesteps, we have the minimum frequency (i.e. mag=0)
+    % - counting the number of waves in multiple rounds of /sampleRate/ timesteps, we can produce a linear mapping
+    % between frequency of waves and magnitude in the range 0..1
+
+    % convert frequency of waves to magnitude of data
+    strideLength = getStrideLength(maxPhiValue); 
+    numSamples   = config.numSamplesPerEpoch;    % at least 3
+    timeLength   = strideLength * numSamples;
+    threshold    = config.waveThreshold;         % how high does the concentration need to be to register as a wave?
+    output_data  = zeros(1, ceil(length(outputStream) / timeLength));
+    o = 1;
+    for t = 1:timeLength:length(outputStream)
+        inWave = false;
+        waves  = 0;
+        for i = 1:timeLength
+            % count number of waves
+            u = outputStream(t + i - 1);
+            if ~inWave && u > threshold
+                % rising edge
+                inWave = true;
+                
+                % increment wave counter
+                waves = waves + 1;
+            end
+            
+            if inWave && u <= threshold
+                % falling edge
+                inWave = false;
+            end
+        end
+        output_data(o) = convertQuantToMag(waves, timeLength, strideLength);
+        o = o + 1;
+    end
+    
+    
+    
+end
+
+
+
+function mag = convertQuantToMag(quantity, timeLength, strideLength)
+
+    % having measured \quantity\ waves in \timeLength\ timesteps with \strideLength\ stride, what is
+    % the underlying magnitude which was inputted?
+    
+    %  0 -> 0.0
+    %  timeLength / strideLength -> 1.0
+    %  0..1 -> mag = quant.strideLength / timeLength
+    
+    mag = quantity * strideLength / timeLength;
+
+
+end
+
+
+function [quantity, delay] = convertMagToQuant(mag, timeLength, strideLength)
+
+    % given \mag\ input (0..1), how many waves should we produce in a given length of time?
+    % 1.0 and 0.0 are the easiest to calculate: 
+    %    0.0 -> 0 waves
+    %    1.0 -> timeLength / strideLength waves
+    %    for 0..1 : linear mapping between extreme values ^^
+    %       -- mag.timeLength / strideLength
+    
+    freq = mag * timeLength / strideLength; % frequency of waves
+    quantity = floor(freq);                 % number of waves to produce
+    
+    % how many time steps do I need to wait after triggering the wave before I can trigger the next
+    % one?
+    
+    % 1.0 -> strideLength
+    % 0.5 -> strideLength * 2
+    % 0.0 -> timeLength
+    
+    % \quantity\ waves to produce in \timeLength\ steps
+    % timeLength / freq = time to wait?
+    
+    % delay = stride / mag (for mag > 0)
+    
+    delay = timeLength;
+    if mag > 0
+        delay = strideLength / mag;
+        if delay > timeLength
+            delay = timeLength;
+        end
+    end
+end
+
+
+
+
 
 
 %% step function
